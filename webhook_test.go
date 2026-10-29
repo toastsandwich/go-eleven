@@ -6,7 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -174,6 +175,108 @@ func TestUpdateWebhookRequestBody(t *testing.T) {
 	}
 }
 
+func TestListWebhooks(t *testing.T) {
+	const body = `{"webhooks":[{"name":"My Webhook","webhook_id":"wh_1","webhook_url":"https://example.com/hook","is_disabled":false,"is_auto_disabled":false,"created_at_unix":123,"auth_type":"hmac","usage":[{"usage_type":"Flows"}],"events":["flows"]}]}`
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/v1/workspace/webhooks" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("include_usages") != "true" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+		requireHeader(t, r, xiAPIKeyHeader, "test-key")
+		io.WriteString(w, body)
+	})
+
+	result, err := client.ListWebhooks(WithIncludeUsages(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Webhooks) != 1 || result.Webhooks[0].WebhookID != "wh_1" {
+		t.Fatalf("webhooks = %+v", result.Webhooks)
+	}
+	if result.Webhooks[0].AuthType != WebhookAuthHMAC {
+		t.Fatalf("auth = %s", result.Webhooks[0].AuthType)
+	}
+}
+
+func TestCreateWebhook(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/v1/workspace/webhooks" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		var payload createWebhookRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Settings.AuthType != "hmac" || payload.Settings.Name != "My Webhook" {
+			t.Fatalf("settings = %+v", payload.Settings)
+		}
+		io.WriteString(w, `{"webhook_id":"wh_1","webhook_secret":"whsec_abc"}`)
+	})
+
+	created, err := client.CreateWebhook("My Webhook", "https://example.com/webhook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.WebhookID != "wh_1" || created.WebhookSecret != "whsec_abc" {
+		t.Fatalf("created = %+v", created)
+	}
+}
+
+func TestUpdateWebhook(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/v1/workspace/webhooks/wh_1" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		var payload updateWebhookRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Name != "My Webhook" || payload.IsDisabled || payload.RetryEnabled == nil || !*payload.RetryEnabled {
+			t.Fatalf("payload = %+v", payload)
+		}
+		io.WriteString(w, `{"status":"ok"}`)
+	})
+
+	result, err := client.UpdateWebhook("wh_1", "My Webhook", false, WithWebhookRetryEnabled(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("status = %q", result.Status)
+	}
+}
+
+func TestDeleteWebhook(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/v1/workspace/webhooks/wh_1" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		io.WriteString(w, `{"status":"ok"}`)
+	})
+
+	result, err := client.DeleteWebhook("wh_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("status = %q", result.Status)
+	}
+}
+
 func TestListWebhooksQuery(t *testing.T) {
 	var opt listWebhooksOption
 	if q := opt.query().Encode(); q != "" {
@@ -186,14 +289,7 @@ func TestListWebhooksQuery(t *testing.T) {
 }
 
 func TestLiveListWebhooks(t *testing.T) {
-	if os.Getenv("ELEVEN_LIVE") == "" {
-		t.Skip("set ELEVEN_LIVE=1 to hit the API")
-	}
-	apiKey := os.Getenv("ELEVEN_API_KEY")
-	if apiKey == "" {
-		t.Fatal("ELEVEN_API_KEY is empty")
-	}
-	result, err := NewClient(apiKey).ListWebhooks(WithIncludeUsages(true))
+	result, err := liveClient(t).ListWebhooks(WithIncludeUsages(true))
 	if err != nil {
 		t.Fatal(err)
 	}
