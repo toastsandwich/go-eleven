@@ -34,3 +34,4 @@ func main() {
 - [Voices](voices.md) — search, filter, and paginate voices
 - [Text to speech](text-to-speech.md) — convert text to a full audio file
 - [Text to speech stream](text-to-speech-stream.md) — stream audio as it is generated
+- [Webhooks](webhooks.md) — manage workspace webhooks and verify deliveries

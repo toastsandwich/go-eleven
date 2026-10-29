@@ -572,3 +572,113 @@ func marshalQueryList(values []string) string {
 	}
 	return string(b)
 }
+
+// ============================================================
+// Webhooks Options
+// ============================================================
+
+type listWebhooksOption struct {
+	IncludeUsages *bool
+}
+
+type ListWebhooksOption func(*listWebhooksOption)
+
+// Whether to include active usages of the webhook. Only usable by workspace admins. Defaults to false.
+func WithIncludeUsages(include bool) ListWebhooksOption {
+	return func(o *listWebhooksOption) {
+		o.IncludeUsages = &include
+	}
+}
+
+func (o *listWebhooksOption) query() url.Values {
+	q := url.Values{}
+	if o.IncludeUsages != nil {
+		q.Set("include_usages", strconv.FormatBool(*o.IncludeUsages))
+	}
+	return q
+}
+
+type createWebhookOption struct {
+	RequestHeaders map[string]string
+}
+
+type CreateWebhookOption func(*createWebhookOption)
+
+// Optional custom request headers to include with each webhook delivery. Headers are write-only and are not returned by ListWebhooks.
+func WithWebhookRequestHeaders(headers map[string]string) CreateWebhookOption {
+	return func(o *createWebhookOption) {
+		o.RequestHeaders = headers
+	}
+}
+
+type createWebhookRequest struct {
+	Settings createWebhookSettings `json:"settings"`
+}
+
+type createWebhookSettings struct {
+	AuthType       string            `json:"auth_type"`
+	Name           string            `json:"name"`
+	WebhookURL     string            `json:"webhook_url"`
+	RequestHeaders map[string]string `json:"request_headers,omitempty"`
+}
+
+func (o *createWebhookOption) body(name, webhookURL string) createWebhookRequest {
+	return createWebhookRequest{
+		Settings: createWebhookSettings{
+			AuthType:       string(WebhookAuthHMAC),
+			Name:           name,
+			WebhookURL:     webhookURL,
+			RequestHeaders: o.RequestHeaders,
+		},
+	}
+}
+
+type updateWebhookOption struct {
+	RetryEnabled   *bool
+	RequestHeaders *map[string]string
+	Events         *[]WebhookSubscriptionEvent
+}
+
+type UpdateWebhookOption func(*updateWebhookOption)
+
+// Whether to enable automatic retries for transient failures (5xx, 429, timeout). Retries are disabled by default.
+func WithWebhookRetryEnabled(enabled bool) UpdateWebhookOption {
+	return func(o *updateWebhookOption) {
+		o.RetryEnabled = &enabled
+	}
+}
+
+// A list of request headers to include with the webhook delivery. Headers are write-only and are not returned by ListWebhooks.
+func WithUpdateWebhookRequestHeaders(headers map[string]string) UpdateWebhookOption {
+	return func(o *updateWebhookOption) {
+		o.RequestHeaders = &headers
+	}
+}
+
+// The complete set of workspace-level events this webhook should be subscribed to. The webhook is added to the events in the list and removed from any not in the list. Omit to leave the current event subscriptions unchanged.
+func WithWebhookEvents(events ...WebhookSubscriptionEvent) UpdateWebhookOption {
+	return func(o *updateWebhookOption) {
+		if events == nil {
+			events = []WebhookSubscriptionEvent{}
+		}
+		o.Events = &events
+	}
+}
+
+type updateWebhookRequest struct {
+	IsDisabled     bool                        `json:"is_disabled"`
+	Name           string                      `json:"name"`
+	RetryEnabled   *bool                       `json:"retry_enabled,omitempty"`
+	RequestHeaders *map[string]string          `json:"request_headers,omitempty"`
+	Events         *[]WebhookSubscriptionEvent `json:"events,omitempty"`
+}
+
+func (o *updateWebhookOption) body(name string, isDisabled bool) updateWebhookRequest {
+	return updateWebhookRequest{
+		IsDisabled:     isDisabled,
+		Name:           name,
+		RetryEnabled:   o.RetryEnabled,
+		RequestHeaders: o.RequestHeaders,
+		Events:         o.Events,
+	}
+}

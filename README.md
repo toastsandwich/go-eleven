@@ -16,5 +16,6 @@ Supported APIs:
 - [Voices](docs/voices.md)
 - [Text to speech](docs/text-to-speech.md)
 - [Text to speech stream](docs/text-to-speech-stream.md)
+- [Webhooks](docs/webhooks.md)
 
 See [docs/README.md](docs/README.md) for setup and usage.
