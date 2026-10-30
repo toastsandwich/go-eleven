@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -20,6 +22,10 @@ type Client interface {
 	TextToSpeechWithContext(ctx context.Context, text string, voiceId string, options ...TextToSpeechOption) ([]byte, error)
 	TextToSpeechStream(text string, voiceId string, options ...TextToSpeechOption) (io.ReadCloser, error)
 	TextToSpeechStreamWithContext(ctx context.Context, text string, voiceId string, options ...TextToSpeechOption) (io.ReadCloser, error)
+	SpeechToSpeech(audio io.Reader, voiceId string, options ...SpeechToSpeechOption) ([]byte, error)
+	SpeechToSpeechWithContext(ctx context.Context, audio io.Reader, voiceId string, options ...SpeechToSpeechOption) ([]byte, error)
+	SpeechToSpeechStream(audio io.Reader, voiceId string, options ...SpeechToSpeechOption) (io.ReadCloser, error)
+	SpeechToSpeechStreamWithContext(ctx context.Context, audio io.Reader, voiceId string, options ...SpeechToSpeechOption) (io.ReadCloser, error)
 	ListWebhooks(options ...ListWebhooksOption) (WebhookList, error)
 	ListWebhooksWithContext(ctx context.Context, options ...ListWebhooksOption) (WebhookList, error)
 	CreateWebhook(name string, webhookURL string, options ...CreateWebhookOption) (CreateWebhookResult, error)
@@ -120,7 +126,50 @@ func (c *client) doPOSTStream(ctx context.Context, endpoint *url.URL, payload an
 	if err != nil {
 		return nil, err
 	}
+	return c.doStream(req)
+}
 
+func (c *client) newMultipartRequest(ctx context.Context, endpoint *url.URL, body io.Reader, contentType string, contentLength int64) *http.Request {
+	req := &http.Request{
+		Method: http.MethodPost,
+		URL:    endpoint,
+		Header: make(http.Header),
+		Body:   io.NopCloser(body),
+	}
+	req.ContentLength = contentLength
+	req = req.WithContext(ctx)
+	req.Header.Add(xiAPIKeyHeader, c.apikey)
+	req.Header.Set("Content-Type", contentType)
+	return req
+}
+
+func (c *client) doPOSTMultipart(ctx context.Context, endpoint *url.URL, body io.Reader, contentType string, contentLength int64) ([]byte, error) {
+	req := c.newMultipartRequest(ctx, endpoint, body, contentType, contentLength)
+
+	clnt := *c.clnt
+	clnt.Timeout = 0
+	resp, err := clnt.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("api response: %s: %s", resp.Status, respBody)
+	}
+	return respBody, nil
+}
+
+func (c *client) doPOSTMultipartStream(ctx context.Context, endpoint *url.URL, body io.Reader, contentType string, contentLength int64) (io.ReadCloser, error) {
+	req := c.newMultipartRequest(ctx, endpoint, body, contentType, contentLength)
+	return c.doStream(req)
+}
+
+func (c *client) doStream(req *http.Request) (io.ReadCloser, error) {
 	clnt := *c.clnt
 	clnt.Timeout = 0
 	resp, err := clnt.Do(req)
@@ -256,6 +305,73 @@ func (c *client) TextToSpeechStreamWithContext(ctx context.Context, text string,
 
 func (c *client) TextToSpeechStream(text string, voiceId string, options ...TextToSpeechOption) (io.ReadCloser, error) {
 	return c.TextToSpeechStreamWithContext(context.Background(), text, voiceId, options...)
+}
+
+func (c *client) SpeechToSpeechWithContext(ctx context.Context, audio io.Reader, voiceId string, options ...SpeechToSpeechOption) ([]byte, error) {
+	endpoint, body, contentType, err := c.prepareSpeechToSpeech(audio, voiceId, false, options)
+	if err != nil {
+		return nil, err
+	}
+	return c.doPOSTMultipart(ctx, endpoint, bytes.NewReader(body), contentType, int64(len(body)))
+}
+
+func (c *client) SpeechToSpeech(audio io.Reader, voiceId string, options ...SpeechToSpeechOption) ([]byte, error) {
+	return c.SpeechToSpeechWithContext(context.Background(), audio, voiceId, options...)
+}
+
+func (c *client) SpeechToSpeechStreamWithContext(ctx context.Context, audio io.Reader, voiceId string, options ...SpeechToSpeechOption) (io.ReadCloser, error) {
+	endpoint, body, contentType, err := c.prepareSpeechToSpeech(audio, voiceId, true, options)
+	if err != nil {
+		return nil, err
+	}
+	return c.doPOSTMultipartStream(ctx, endpoint, bytes.NewReader(body), contentType, int64(len(body)))
+}
+
+func (c *client) SpeechToSpeechStream(audio io.Reader, voiceId string, options ...SpeechToSpeechOption) (io.ReadCloser, error) {
+	return c.SpeechToSpeechStreamWithContext(context.Background(), audio, voiceId, options...)
+}
+
+func (c *client) prepareSpeechToSpeech(audio io.Reader, voiceId string, stream bool, options []SpeechToSpeechOption) (*url.URL, []byte, string, error) {
+	if audio == nil {
+		return nil, nil, "", fmt.Errorf("audio is nil")
+	}
+	if voiceId == "" {
+		return nil, nil, "", fmt.Errorf("voiceId is empty")
+	}
+
+	var opt speechToSpeechOption
+	for _, option := range options {
+		option(&opt)
+	}
+
+	filename := opt.AudioFilename
+	if filename == "" {
+		filename = audioFilename(audio)
+	}
+
+	body, contentType, err := opt.body(audio, filename)
+	if err != nil {
+		return nil, nil, "", err
+	}
+
+	var endpoint *url.URL
+	if stream {
+		endpoint = c.base.JoinPath(speechToSpeechEndpoint, voiceId, ttsStreamSegment)
+	} else {
+		endpoint = c.base.JoinPath(speechToSpeechEndpoint, voiceId)
+	}
+	endpoint.RawQuery = opt.query().Encode()
+	return endpoint, body, contentType, nil
+}
+
+func audioFilename(audio io.Reader) string {
+	if f, ok := audio.(*os.File); ok {
+		name := filepath.Base(f.Name())
+		if name != "" && name != "." && name != string(filepath.Separator) {
+			return name
+		}
+	}
+	return "audio"
 }
 
 func (c *client) ListWebhooksWithContext(ctx context.Context, options ...ListWebhooksOption) (WebhookList, error) {

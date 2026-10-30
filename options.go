@@ -1,7 +1,11 @@
 package eleven
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
 	"net/url"
 	"strconv"
 )
@@ -681,4 +685,165 @@ func (o *updateWebhookOption) body(name string, isDisabled bool) updateWebhookRe
 		RequestHeaders: o.RequestHeaders,
 		Events:         o.Events,
 	}
+}
+
+// ============================================================
+// Speech To Speech Options
+// ============================================================
+
+type FileFormat string
+
+const (
+	FileFormatOther      FileFormat = "other"
+	FileFormatPCMS16LE16 FileFormat = "pcm_s16le_16"
+)
+
+func (f FileFormat) String() string { return string(f) }
+
+type speechToSpeechOption struct {
+	// queryParameters
+	EnableLogging            *bool
+	OptimizeStreamingLatency *int
+	OutputFormat             string
+	// form body
+	ModelId               string
+	VoiceSettings         *VoiceSettings
+	Seed                  *int
+	RemoveBackgroundNoise *bool
+	FileFormat            string
+	AudioFilename         string
+}
+
+type SpeechToSpeechOption func(*speechToSpeechOption)
+
+// When enable_logging is set to false zero retention mode will be used for the request. This will mean history features are unavailable for this request, including request stitching. Zero retention mode may only be used by enterprise customers.
+func WithoutSpeechToSpeechEnableLogging() SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		enabled := false
+		o.EnableLogging = &enabled
+	}
+}
+
+// You can turn on latency optimizations at some cost of quality. The best possible final latency varies by model. Possible values: 0 - default mode (no latency optimizations) 1 - normal latency optimizations (about 50% of possible latency improvement of option 3) 2 - strong latency optimizations (about 75% of possible latency improvement of option 3) 3 - max latency optimizations 4 - max latency optimizations, but also with text normalizer turned off for even more latency savings (best latency, but can mispronounce eg numbers and dates).
+func WithSpeechToSpeechOptimizeStreamingLatency(latency StreamingLatency) SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		v := int(latency)
+		o.OptimizeStreamingLatency = &v
+	}
+}
+
+// Output format of the generated audio. Formatted as codec_sample_rate_bitrate. So an mp3 with 22.05kHz sample rate at 32kbs is represented as mp3_22050_32. MP3 with 192kbps bitrate requires you to be subscribed to Creator tier or above. PCM and WAV formats with 44.1kHz sample rate requires you to be subscribed to Pro tier or above. Note that the μ-law format (sometimes written mu-law, often approximated as u-law) is commonly used for Twilio audio inputs.
+func WithSpeechToSpeechOutputFormat(format OutputFormat) SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		o.OutputFormat = format.String()
+	}
+}
+
+// Identifier of the model that will be used, you can query them using GET /v1/models. The model needs to have support for speech to speech, you can check this using the can_do_voice_conversion property. Defaults to eleven_english_sts_v2.
+func WithSpeechToSpeechModelId(modelId string) SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		o.ModelId = modelId
+	}
+}
+
+// Voice settings overriding stored settings for the given voice. They are applied only on the given request. Sent as a JSON encoded string in the multipart form.
+func WithSpeechToSpeechVoiceSettings(voiceSettings VoiceSettings) SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		o.VoiceSettings = &voiceSettings
+	}
+}
+
+// If specified, our system will make a best effort to sample deterministically, such that repeated requests with the same seed and parameters should return the same result. Determinism is not guaranteed. Must be integer between 0 and 4294967295.
+func WithSpeechToSpeechSeed(seed int) SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		o.Seed = &seed
+	}
+}
+
+// If set, will remove the background noise from your audio input using the audio isolation model. Only applies to Voice Changer.
+func WithRemoveBackgroundNoise() SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		enabled := true
+		o.RemoveBackgroundNoise = &enabled
+	}
+}
+
+// The format of input audio. Options are 'pcm_s16le_16' or 'other'. For pcm_s16le_16, the input audio must be 16-bit PCM at a 16kHz sample rate, single channel (mono), and little-endian byte order. Latency will be lower than with passing an encoded waveform.
+func WithFileFormat(format FileFormat) SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		o.FileFormat = format.String()
+	}
+}
+
+// Filename used in the multipart audio part. Defaults to the base name of an *os.File, or "audio".
+func WithAudioFilename(name string) SpeechToSpeechOption {
+	return func(o *speechToSpeechOption) {
+		o.AudioFilename = name
+	}
+}
+
+func (o *speechToSpeechOption) query() url.Values {
+	q := url.Values{}
+	if o.EnableLogging != nil {
+		q.Set("enable_logging", strconv.FormatBool(*o.EnableLogging))
+	}
+	if o.OptimizeStreamingLatency != nil {
+		q.Set("optimize_streaming_latency", strconv.Itoa(*o.OptimizeStreamingLatency))
+	}
+	if o.OutputFormat != "" {
+		q.Set("output_format", o.OutputFormat)
+	}
+	return q
+}
+
+func (o *speechToSpeechOption) body(audio io.Reader, filename string) ([]byte, string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	fw, err := w.CreateFormFile("audio", filename)
+	if err != nil {
+		return nil, "", err
+	}
+	n, err := io.Copy(fw, audio)
+	if err != nil {
+		return nil, "", err
+	}
+	if n == 0 {
+		return nil, "", fmt.Errorf("audio is empty")
+	}
+
+	if o.ModelId != "" {
+		if err := w.WriteField("model_id", o.ModelId); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.VoiceSettings != nil {
+		settings, err := json.Marshal(o.VoiceSettings)
+		if err != nil {
+			return nil, "", err
+		}
+		if err := w.WriteField("voice_settings", string(settings)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.Seed != nil {
+		if err := w.WriteField("seed", strconv.Itoa(*o.Seed)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.RemoveBackgroundNoise != nil {
+		if err := w.WriteField("remove_background_noise", strconv.FormatBool(*o.RemoveBackgroundNoise)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.FileFormat != "" {
+		if err := w.WriteField("file_format", o.FileFormat); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), w.FormDataContentType(), nil
 }
