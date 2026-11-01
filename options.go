@@ -847,3 +847,431 @@ func (o *speechToSpeechOption) body(audio io.Reader, filename string) ([]byte, s
 	}
 	return buf.Bytes(), w.FormDataContentType(), nil
 }
+
+// Speech To Text Options
+// ============================================================
+
+type speechToTextOption struct {
+	// queryParameters
+	Token         string
+	EnableLogging *bool
+	// form body
+	ModelId                 string
+	LanguageCode            string
+	TranscriptEdit          string
+	TagAudioEvents          *bool
+	NumSpeakers             *int
+	TimestampsGranularity   string
+	Diarize                 *bool
+	DiarizationThreshold    *float64
+	AdditionalFormats       []TranscriptExportOptions
+	FileFormat              string
+	SourceURL               string
+	Webhook                 *bool
+	WebhookID               string
+	Temperature             *float64
+	Seed                    *int
+	UseMultiChannel         *bool
+	MultichannelOutputStyle string
+	WebhookMetadata         any
+	EntityDetection         []string
+	NoVerbatim              *bool
+	UseSpeakerLibrary       *bool
+	DetectSpeakerRoles      *bool
+	EntityRedaction         []string
+	EntityRedactionMode     string
+	Keyterms                []string
+	AudioFilename           string
+}
+
+type SpeechToTextOption func(*speechToTextOption)
+
+// A single-use authentication token created via POST /v1/single-use-token/batch_scribe. This token can only be used once and expires after 15 minutes. Alternative to API key authentication for frontend clients.
+func WithSpeechToTextToken(token string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.Token = token
+	}
+}
+
+// When enable_logging is set to false zero retention mode will be used for the request. This will mean log and transcript storage features are unavailable for this request. Zero retention mode may only be used by enterprise customers.
+func WithoutSpeechToTextEnableLogging() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := false
+		o.EnableLogging = &enabled
+	}
+}
+
+// The ID of the model to use for transcription. Defaults to scribe_v2. Use scribe_v2_medical for medical and clinical audio.
+func WithSpeechToTextModelId(modelId string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.ModelId = modelId
+	}
+}
+
+// An ISO-639-1 or ISO-639-3 language_code corresponding to the language of the audio file. Can sometimes improve transcription performance if known beforehand. Defaults to null, in this case the language is predicted automatically.
+func WithSpeechToTextLanguageCode(languageCode string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.LanguageCode = languageCode
+	}
+}
+
+// Natural-language instruction applied to the final transcript (max 2000 characters). The edited text is returned in edited_transcript alongside the original transcript. Cannot be combined with entity detection, entity redaction, or use_multi_channel. Usage incurs an additional 30% surcharge, billed for at least 10 seconds of audio.
+func WithTranscriptEdit(instruction string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.TranscriptEdit = instruction
+	}
+}
+
+// Tag audio events like (laughter), (footsteps), etc. in the transcription.
+func WithTagAudioEvents() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := true
+		o.TagAudioEvents = &enabled
+	}
+}
+
+// Disable tagging of audio events in the transcription.
+func WithoutTagAudioEvents() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := false
+		o.TagAudioEvents = &enabled
+	}
+}
+
+// The maximum amount of speakers talking in the uploaded file. Can help with predicting who speaks when. The maximum amount of speakers that can be predicted is 32.
+func WithNumSpeakers(n int) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.NumSpeakers = &n
+	}
+}
+
+// The granularity of the timestamps in the transcription. word provides word-level timestamps and character provides character-level timestamps per word.
+func WithTimestampsGranularity(granularity TimestampsGranularity) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.TimestampsGranularity = granularity.String()
+	}
+}
+
+// Annotate which speaker is currently talking in the uploaded file.
+func WithDiarize() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := true
+		o.Diarize = &enabled
+	}
+}
+
+// Diarization threshold to apply during speaker diarization. A higher value means a lower chance of one speaker being diarized as two different speakers. Can only be set when diarize is true and num_speakers is unset. Defaults to a model-specific value (usually 0.22).
+func WithDiarizationThreshold(threshold float64) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.DiarizationThreshold = &threshold
+	}
+}
+
+// Additional formats to export the transcript to. Formats: docx, html, pdf, segmented_json, srt, txt.
+func WithAdditionalFormats(formats ...TranscriptExportOptions) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.AdditionalFormats = formats
+	}
+}
+
+// The format of input audio. Options are pcm_s16le_16 or other. For pcm_s16le_16, the input audio must be 16-bit PCM at a 16kHz sample rate, single channel (mono), and little-endian byte order. Latency will be lower than with passing an encoded waveform.
+func WithSpeechToTextFileFormat(format FileFormat) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.FileFormat = format.String()
+	}
+}
+
+// The URL of an audio or video file to transcribe. Supports hosted video or audio files, YouTube video URLs, TikTok video URLs, and other video hosting services. Provide this instead of uploading a file.
+func WithSourceURL(url string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.SourceURL = url
+	}
+}
+
+// Process the request asynchronously and send the transcription result to configured speech-to-text webhooks. The request returns early without the transcription.
+func WithSpeechToTextWebhook() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := true
+		o.Webhook = &enabled
+	}
+}
+
+// Optional specific webhook ID to send the transcription result to. Only valid when webhook is set to true. If not provided, transcription will be sent to all configured speech-to-text webhooks.
+func WithSpeechToTextWebhookID(webhookID string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.WebhookID = webhookID
+	}
+}
+
+// Controls the randomness of the transcription output. Accepts values between 0.0 and 2.0, where higher values result in more diverse and less deterministic results. If omitted, a temperature based on the selected model is used, usually 0.
+func WithSpeechToTextTemperature(temperature float64) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.Temperature = &temperature
+	}
+}
+
+// If specified, our system will make a best effort to sample deterministically, such that repeated requests with the same seed and parameters should return the same result. Determinism is not guaranteed. Must be an integer between 0 and 2147483647.
+func WithSpeechToTextSeed(seed int) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.Seed = &seed
+	}
+}
+
+// Whether the audio file contains multiple channels where each channel contains a single speaker. When enabled, each channel is transcribed independently. A maximum of 5 channels is supported. Each channel is billed independently at the full audio duration.
+func WithUseMultiChannel() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := true
+		o.UseMultiChannel = &enabled
+	}
+}
+
+// Controls the response shape when use_multi_channel is enabled. separate (default) returns one transcript per channel under transcripts. combined merges all channels into a single transcript whose words are sorted by start time, each carrying a channel_index. combined requires timestamps and does not support entity detection or redaction.
+func WithMultichannelOutputStyle(style MultichannelOutputStyle) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.MultichannelOutputStyle = style.String()
+	}
+}
+
+// Optional metadata included in the webhook response. Must JSON-encode to an object with a maximum depth of 2 levels and maximum size of 16KB. Useful for tracking internal IDs, job references, or other contextual information.
+func WithSpeechToTextWebhookMetadata(metadata any) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.WebhookMetadata = metadata
+	}
+}
+
+// Detect entities in the transcript. Can be all to detect all entities, a category (pii, phi, pci, other, offensive_language), or specific entity types. When enabled, detected entities are returned in the entities field.
+func WithEntityDetection(values ...string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.EntityDetection = values
+	}
+}
+
+// If true, the transcription will not have any filler words, false starts and non-speech sounds. Only supported with scribe_v2.
+func WithNoVerbatim() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := true
+		o.NoVerbatim = &enabled
+	}
+}
+
+// Use the speaker library for identifying known speakers during diarization. When enabled and diarize is true, detected speakers will be matched against registered speakers in the workspace's speaker library.
+func WithUseSpeakerLibrary() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := true
+		o.UseSpeakerLibrary = &enabled
+	}
+}
+
+// Detect speaker roles (agent vs customer). Requires diarize=true. Cannot be used with use_multi_channel=true. When enabled, speaker_id values will be agent and customer instead of speaker_0, speaker_1, etc. Usage incurs an additional 10% surcharge.
+func WithDetectSpeakerRoles() SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		enabled := true
+		o.DetectSpeakerRoles = &enabled
+	}
+}
+
+// Redact entities from the transcript text. Accepts the same format as entity detection: all, a category (pii, phi), or specific entity types. Must be a subset of entity detection. When redaction is enabled, the entities field will not be returned.
+func WithEntityRedaction(values ...string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.EntityRedaction = values
+	}
+}
+
+// How to format redacted entities. redacted replaces with {REDACTED}, entity_type replaces with {ENTITY_TYPE}, enumerated_entity_type replaces with {ENTITY_TYPE_N}. Only used when entity redaction is set.
+func WithEntityRedactionMode(mode EntityRedactionMode) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.EntityRedactionMode = mode.String()
+	}
+}
+
+// Keyterms to bias the transcription towards. At most 1000 terms, each shorter than 50 characters and at most 5 words after normalisation. The characters < > { } [ ] \ are not supported. Usage incurs an additional 20% surcharge. When more than 100 keyterms are provided, a minimum billable duration of 20 seconds applies per request.
+func WithKeyterms(terms ...string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.Keyterms = terms
+	}
+}
+
+// Filename used in the multipart file part. Defaults to the base name of an *os.File, or "audio".
+func WithSpeechToTextAudioFilename(name string) SpeechToTextOption {
+	return func(o *speechToTextOption) {
+		o.AudioFilename = name
+	}
+}
+
+func (o *speechToTextOption) query() url.Values {
+	q := url.Values{}
+	if o.Token != "" {
+		q.Set("token", o.Token)
+	}
+	if o.EnableLogging != nil {
+		q.Set("enable_logging", strconv.FormatBool(*o.EnableLogging))
+	}
+	return q
+}
+
+func (o *speechToTextOption) body(audio io.Reader, filename string) ([]byte, string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	if audio != nil {
+		fw, err := w.CreateFormFile("file", filename)
+		if err != nil {
+			return nil, "", err
+		}
+		n, err := io.Copy(fw, audio)
+		if err != nil {
+			return nil, "", err
+		}
+		if n == 0 {
+			return nil, "", fmt.Errorf("audio is empty")
+		}
+	}
+
+	if err := w.WriteField("model_id", o.ModelId); err != nil {
+		return nil, "", err
+	}
+	if o.LanguageCode != "" {
+		if err := w.WriteField("language_code", o.LanguageCode); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.TranscriptEdit != "" {
+		if err := w.WriteField("transcript_edit", o.TranscriptEdit); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.TagAudioEvents != nil {
+		if err := w.WriteField("tag_audio_events", strconv.FormatBool(*o.TagAudioEvents)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.NumSpeakers != nil {
+		if err := w.WriteField("num_speakers", strconv.Itoa(*o.NumSpeakers)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.TimestampsGranularity != "" {
+		if err := w.WriteField("timestamps_granularity", o.TimestampsGranularity); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.Diarize != nil {
+		if err := w.WriteField("diarize", strconv.FormatBool(*o.Diarize)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.DiarizationThreshold != nil {
+		if err := w.WriteField("diarization_threshold", strconv.FormatFloat(*o.DiarizationThreshold, 'f', -1, 64)); err != nil {
+			return nil, "", err
+		}
+	}
+	if len(o.AdditionalFormats) > 0 {
+		encoded, err := json.Marshal(o.AdditionalFormats)
+		if err != nil {
+			return nil, "", err
+		}
+		if err := w.WriteField("additional_formats", string(encoded)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.FileFormat != "" {
+		if err := w.WriteField("file_format", o.FileFormat); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.SourceURL != "" {
+		if err := w.WriteField("source_url", o.SourceURL); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.Webhook != nil {
+		if err := w.WriteField("webhook", strconv.FormatBool(*o.Webhook)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.WebhookID != "" {
+		if err := w.WriteField("webhook_id", o.WebhookID); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.Temperature != nil {
+		if err := w.WriteField("temperature", strconv.FormatFloat(*o.Temperature, 'f', -1, 64)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.Seed != nil {
+		if err := w.WriteField("seed", strconv.Itoa(*o.Seed)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.UseMultiChannel != nil {
+		if err := w.WriteField("use_multi_channel", strconv.FormatBool(*o.UseMultiChannel)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.MultichannelOutputStyle != "" {
+		if err := w.WriteField("multichannel_output_style", o.MultichannelOutputStyle); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.WebhookMetadata != nil {
+		encoded, err := json.Marshal(o.WebhookMetadata)
+		if err != nil {
+			return nil, "", err
+		}
+		if err := w.WriteField("webhook_metadata", string(encoded)); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := writeEntityField(w, "entity_detection", o.EntityDetection); err != nil {
+		return nil, "", err
+	}
+	if o.NoVerbatim != nil {
+		if err := w.WriteField("no_verbatim", strconv.FormatBool(*o.NoVerbatim)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.UseSpeakerLibrary != nil {
+		if err := w.WriteField("use_speaker_library", strconv.FormatBool(*o.UseSpeakerLibrary)); err != nil {
+			return nil, "", err
+		}
+	}
+	if o.DetectSpeakerRoles != nil {
+		if err := w.WriteField("detect_speaker_roles", strconv.FormatBool(*o.DetectSpeakerRoles)); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := writeEntityField(w, "entity_redaction", o.EntityRedaction); err != nil {
+		return nil, "", err
+	}
+	if o.EntityRedactionMode != "" {
+		if err := w.WriteField("entity_redaction_mode", o.EntityRedactionMode); err != nil {
+			return nil, "", err
+		}
+	}
+	for _, term := range o.Keyterms {
+		if err := w.WriteField("keyterms", term); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), w.FormDataContentType(), nil
+}
+
+func writeEntityField(w *multipart.Writer, key string, values []string) error {
+	switch len(values) {
+	case 0:
+		return nil
+	case 1:
+		return w.WriteField(key, values[0])
+	default:
+		encoded, err := json.Marshal(values)
+		if err != nil {
+			return err
+		}
+		return w.WriteField(key, string(encoded))
+	}
+}
