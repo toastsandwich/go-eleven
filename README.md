@@ -18,6 +18,12 @@ Supported APIs:
 - [Text to speech stream](docs/text-to-speech-stream.md)
 - [Speech to speech](docs/speech-to-speech.md)
 - [Speech to speech stream](docs/speech-to-speech-stream.md)
+- [Speech to text](docs/speech-to-text.md)
+- [Agents](docs/agents.md)
+- [Conversations](docs/conversations.md)
+- [Live conversation](docs/live-conversation.md)
+- [Tools](docs/tools.md)
+- [Knowledge base](docs/knowledge-base.md)
 - [Webhooks](docs/webhooks.md)
 
 See [docs/README.md](docs/README.md) for setup and usage.
