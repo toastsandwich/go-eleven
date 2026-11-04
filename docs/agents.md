@@ -85,6 +85,8 @@ err = client.DeleteAgent(agentID)
 
 A name-only update does not send `conversation_config`. Use `WithUpdateConversationConfig` to patch prompt, voice, or turn settings.
 
+`ConversationalConfig` also carries `Turn.SoftTimeoutConfig`, `Agent.DynamicVariablePlaceholders`, and `Prompt.MCPServerIDs` when you PATCH those ElevenLabs fields.
+
 ## Options
 
 ### List

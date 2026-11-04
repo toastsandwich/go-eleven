@@ -113,11 +113,19 @@ type ASRConfig struct {
 	Keywords             []string `json:"keywords,omitempty"`
 }
 
+type SoftTimeoutConfig struct {
+	TimeoutSeconds                    *float64 `json:"timeout_seconds,omitempty"`
+	UseLLMGeneratedMessage            *bool    `json:"use_llm_generated_message,omitempty"`
+	LLMGeneratedMessagePromptOverride string   `json:"llm_generated_message_prompt_override,omitempty"`
+	MaxSoftTimeoutsPerGeneration      *int     `json:"max_soft_timeouts_per_generation,omitempty"`
+}
+
 type TurnConfig struct {
-	TurnTimeout           *float64 `json:"turn_timeout,omitempty"`
-	SilenceEndCallTimeout *float64 `json:"silence_end_call_timeout,omitempty"`
-	TurnEagerness         string   `json:"turn_eagerness,omitempty"`
-	SpeculativeTurn       *bool    `json:"speculative_turn,omitempty"`
+	TurnTimeout           *float64           `json:"turn_timeout,omitempty"`
+	SilenceEndCallTimeout *float64           `json:"silence_end_call_timeout,omitempty"`
+	TurnEagerness         string             `json:"turn_eagerness,omitempty"`
+	SpeculativeTurn       *bool              `json:"speculative_turn,omitempty"`
+	SoftTimeoutConfig     *SoftTimeoutConfig `json:"soft_timeout_config,omitempty"`
 }
 
 type AgentTTSConfig struct {
@@ -148,14 +156,16 @@ type AgentPrompt struct {
 	Temperature   *float64                    `json:"temperature,omitempty"`
 	MaxTokens     *int                        `json:"max_tokens,omitempty"`
 	ToolIDs       []string                    `json:"tool_ids,omitempty"`
+	MCPServerIDs  []string                    `json:"mcp_server_ids,omitempty"`
 	KnowledgeBase []AgentKnowledgeBaseLocator `json:"knowledge_base,omitempty"`
 	RAG           json.RawMessage             `json:"rag,omitempty"`
 }
 
 type AgentConfig struct {
-	FirstMessage string       `json:"first_message,omitempty"`
-	Language     string       `json:"language,omitempty"`
-	Prompt       *AgentPrompt `json:"prompt,omitempty"`
+	FirstMessage                string            `json:"first_message,omitempty"`
+	Language                    string            `json:"language,omitempty"`
+	Prompt                      *AgentPrompt      `json:"prompt,omitempty"`
+	DynamicVariablePlaceholders map[string]string `json:"dynamic_variable_placeholders,omitempty"`
 }
 
 type ConversationalConfig struct {

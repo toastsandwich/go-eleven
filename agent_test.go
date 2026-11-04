@@ -156,6 +156,71 @@ func TestUpdateAgentRequestBody(t *testing.T) {
 	}
 }
 
+func TestUpdateConversationConfigExtraFields(t *testing.T) {
+	timeout := 8.0
+	useLLM := true
+	maxSoft := 1
+	var opt updateAgentOption
+	WithUpdateConversationConfig(ConversationalConfig{
+		Turn: &TurnConfig{
+			SoftTimeoutConfig: &SoftTimeoutConfig{
+				TimeoutSeconds:                    &timeout,
+				UseLLMGeneratedMessage:            &useLLM,
+				LLMGeneratedMessagePromptOverride: "one moment",
+				MaxSoftTimeoutsPerGeneration:      &maxSoft,
+			},
+		},
+		Agent: &AgentConfig{
+			DynamicVariablePlaceholders: map[string]string{
+				"ui_language": "English",
+				"honorific":   "",
+				"username":    "there",
+			},
+			Prompt: &AgentPrompt{
+				ToolIDs:      []string{"tool_1"},
+				MCPServerIDs: []string{"mcp_1"},
+			},
+		},
+	})(&opt)
+
+	got, err := json.Marshal(opt.body())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(got, &payload); err != nil {
+		t.Fatal(err)
+	}
+	config := payload["conversation_config"].(map[string]any)
+	turn := config["turn"].(map[string]any)
+	soft := turn["soft_timeout_config"].(map[string]any)
+	if soft["timeout_seconds"] != 8.0 {
+		t.Fatalf("timeout_seconds = %v", soft["timeout_seconds"])
+	}
+	if soft["use_llm_generated_message"] != true {
+		t.Fatalf("use_llm_generated_message = %v", soft["use_llm_generated_message"])
+	}
+	if soft["llm_generated_message_prompt_override"] != "one moment" {
+		t.Fatalf("prompt override = %v", soft["llm_generated_message_prompt_override"])
+	}
+	if soft["max_soft_timeouts_per_generation"] != 1.0 {
+		t.Fatalf("max_soft_timeouts = %v", soft["max_soft_timeouts_per_generation"])
+	}
+	agent := config["agent"].(map[string]any)
+	placeholders := agent["dynamic_variable_placeholders"].(map[string]any)
+	if placeholders["ui_language"] != "English" || placeholders["username"] != "there" {
+		t.Fatalf("placeholders = %v", placeholders)
+	}
+	if _, ok := placeholders["honorific"]; !ok {
+		t.Fatalf("honorific omitted = %v", placeholders)
+	}
+	prompt := agent["prompt"].(map[string]any)
+	ids := prompt["mcp_server_ids"].([]any)
+	if len(ids) != 1 || ids[0] != "mcp_1" {
+		t.Fatalf("mcp_server_ids = %v", ids)
+	}
+}
+
 func TestAgentValidation(t *testing.T) {
 	client := NewClient("test")
 	if _, err := client.GetAgent(""); err == nil || err.Error() != "agentID is empty" {
