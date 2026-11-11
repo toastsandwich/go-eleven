@@ -1,6 +1,6 @@
 # Agents
 
-Create, list, update, duplicate, and delete Eleven Agents with `/v1/convai/agents`.
+Create, list, create-or-update, update, duplicate, and delete Eleven Agents with `/v1/convai/agents`.
 
 This is agent configuration only. For past calls and session tokens, see [conversations](conversations.md). Workspace tools are in [tools](tools.md). Documents are in [knowledge-base](knowledge-base.md). Live sessions are in [live-conversation](live-conversation.md).
 
@@ -36,6 +36,37 @@ fmt.Println(created.AgentID)
 ```
 
 `platform_settings` and `workflow` are pass-through JSON (`WithPlatformSettings`, `WithAgentWorkflow`).
+
+## Create or update agent
+
+`CreateOrUpdateAgent` looks up the agent by exact name. Missing means create; one match means patch `conversation_config` plus any tags, platform settings, and workflow you pass. `WithAgentName` is required. A substring list hit with a different name is ignored.
+
+```go
+result, err := client.CreateOrUpdateAgent(
+	eleven.ConversationalConfig{
+		Agent: &eleven.AgentConfig{
+			FirstMessage: "Hi, how can I help?",
+			Language:     "en",
+			Prompt: &eleven.AgentPrompt{
+				Prompt: "You are a concise support agent.",
+				LLM:    "gemini-2.0-flash",
+			},
+		},
+		TTS: &eleven.AgentTTSConfig{
+			VoiceID: voiceId,
+			ModelID: "eleven_turbo_v2_5",
+		},
+	},
+	eleven.WithAgentName("Support Concierge"),
+	eleven.WithCreateAgentTags("support"),
+)
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println(result.AgentID, result.Created)
+```
+
+Two agents with the same name is an error. Concurrent calls can still insert duplicates because the API does not unique-index names.
 
 ## List agents
 
@@ -119,6 +150,10 @@ A name-only update does not send `conversation_config`. Use `WithUpdateConversat
 | `WithPlatformSettings` | `platform_settings` | Raw JSON |
 | `WithAgentWorkflow` | `workflow` | Raw JSON |
 
+### Create or update
+
+Same options as Create. `WithAgentName` is required and is the lookup key.
+
 ### Update
 
 | Option | Where | Notes |
@@ -144,6 +179,7 @@ A name-only update does not send `conversation_config`. Use `WithUpdateConversat
 ```go
 result, err := client.ListAgentsWithContext(ctx)
 created, err := client.CreateAgentWithContext(ctx, config, eleven.WithAgentName("Support"))
+result, err := client.CreateOrUpdateAgentWithContext(ctx, config, eleven.WithAgentName("Support"))
 agent, err := client.GetAgentWithContext(ctx, agentID)
 agent, err = client.UpdateAgentWithContext(ctx, agentID, eleven.WithUpdateAgentName("Support v2"))
 err = client.DeleteAgentWithContext(ctx, agentID)

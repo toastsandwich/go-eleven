@@ -411,7 +411,7 @@ func TestLiveConversations(t *testing.T) {
 			},
 			TTS: &AgentTTSConfig{
 				VoiceID: "CwhRBWXzGAHq8TQ4Fs17",
-				ModelID: "eleven_turbo_v2_5",
+				ModelID: "eleven_turbo_v2",
 			},
 		},
 		WithAgentName("go-eleven-conversation-test"),

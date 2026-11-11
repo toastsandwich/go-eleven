@@ -200,6 +200,13 @@ type CreateAgentResult struct {
 	AgentID string `json:"agent_id"`
 }
 
+// CreateOrUpdateAgentResult is returned by CreateOrUpdateAgent.
+// Created is true when the call inserted a new agent.
+type CreateOrUpdateAgentResult struct {
+	AgentID string `json:"agent_id"`
+	Created bool   `json:"created"`
+}
+
 type ConversationLinkToken struct {
 	AgentID                string `json:"agent_id"`
 	ConversationToken      string `json:"conversation_token"`

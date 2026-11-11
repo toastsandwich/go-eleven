@@ -36,6 +36,8 @@ type Client interface {
 	ListAgentsWithContext(ctx context.Context, options ...ListAgentsOption) (AgentList, error)
 	CreateAgent(config ConversationalConfig, options ...CreateAgentOption) (CreateAgentResult, error)
 	CreateAgentWithContext(ctx context.Context, config ConversationalConfig, options ...CreateAgentOption) (CreateAgentResult, error)
+	CreateOrUpdateAgent(config ConversationalConfig, options ...CreateAgentOption) (CreateOrUpdateAgentResult, error)
+	CreateOrUpdateAgentWithContext(ctx context.Context, config ConversationalConfig, options ...CreateAgentOption) (CreateOrUpdateAgentResult, error)
 	GetAgent(agentID string, options ...GetAgentOption) (Agent, error)
 	GetAgentWithContext(ctx context.Context, agentID string, options ...GetAgentOption) (Agent, error)
 	UpdateAgent(agentID string, options ...UpdateAgentOption) (Agent, error)
@@ -735,6 +737,66 @@ func (c *client) CreateAgentWithContext(ctx context.Context, config Conversation
 
 func (c *client) CreateAgent(config ConversationalConfig, options ...CreateAgentOption) (CreateAgentResult, error) {
 	return c.CreateAgentWithContext(context.Background(), config, options...)
+}
+
+func (c *client) CreateOrUpdateAgentWithContext(ctx context.Context, config ConversationalConfig, options ...CreateAgentOption) (CreateOrUpdateAgentResult, error) {
+	var opt createAgentOption
+	for _, option := range options {
+		option(&opt)
+	}
+	if opt.Name == "" {
+		return CreateOrUpdateAgentResult{}, fmt.Errorf("agent name is empty")
+	}
+
+	matches, err := c.findAgentsByExactName(ctx, opt.Name)
+	if err != nil {
+		return CreateOrUpdateAgentResult{}, err
+	}
+	if len(matches) > 1 {
+		return CreateOrUpdateAgentResult{}, fmt.Errorf("multiple agents named %q", opt.Name)
+	}
+	if len(matches) == 0 {
+		created, err := c.CreateAgentWithContext(ctx, config, options...)
+		if err != nil {
+			return CreateOrUpdateAgentResult{}, err
+		}
+		return CreateOrUpdateAgentResult{AgentID: created.AgentID, Created: true}, nil
+	}
+
+	updated, err := c.UpdateAgentWithContext(ctx, matches[0].AgentID, opt.updateOptions(config)...)
+	if err != nil {
+		return CreateOrUpdateAgentResult{}, err
+	}
+	return CreateOrUpdateAgentResult{AgentID: updated.AgentID}, nil
+}
+
+func (c *client) CreateOrUpdateAgent(config ConversationalConfig, options ...CreateAgentOption) (CreateOrUpdateAgentResult, error) {
+	return c.CreateOrUpdateAgentWithContext(context.Background(), config, options...)
+}
+
+func (c *client) findAgentsByExactName(ctx context.Context, name string) ([]AgentSummary, error) {
+	var matches []AgentSummary
+	var cursor string
+	for {
+		opts := []ListAgentsOption{WithAgentSearch(name), WithAgentPageSize(100)}
+		if cursor != "" {
+			opts = append(opts, WithAgentCursor(cursor))
+		}
+
+		page, err := c.ListAgentsWithContext(ctx, opts...)
+		if err != nil {
+			return nil, err
+		}
+		for _, agent := range page.Agents {
+			if agent.Name == name {
+				matches = append(matches, agent)
+			}
+		}
+		if !page.HasMore || page.NextCursor == "" || page.NextCursor == cursor {
+			return matches, nil
+		}
+		cursor = page.NextCursor
+	}
 }
 
 func (c *client) GetAgentWithContext(ctx context.Context, agentID string, options ...GetAgentOption) (Agent, error) {

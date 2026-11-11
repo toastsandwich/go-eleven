@@ -37,7 +37,7 @@ func main() {
 - [Speech to speech](speech-to-speech.md) — convert a recording into another voice
 - [Speech to speech stream](speech-to-speech-stream.md) — stream converted audio as it is generated
 - [Speech to text](speech-to-text.md) — transcribe audio or video with Scribe
-- [Agents](agents.md) — create, list, update, and delete Eleven Agents
+- [Agents](agents.md) — create, create-or-update, list, update, and delete Eleven Agents
 - [Conversations](conversations.md) — list calls, fetch transcripts, and mint session tokens
 - [Live conversation](live-conversation.md) — talk to an agent over WebSocket
 - [Tools](tools.md) — create, list, update, and delete workspace tools

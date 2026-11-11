@@ -204,6 +204,20 @@ func (o *createAgentOption) body(config ConversationalConfig) createAgentRequest
 	}
 }
 
+func (o *createAgentOption) updateOptions(config ConversationalConfig) []UpdateAgentOption {
+	opts := []UpdateAgentOption{WithUpdateConversationConfig(config)}
+	if o.Tags != nil {
+		opts = append(opts, WithUpdateAgentTags(o.Tags...))
+	}
+	if len(o.PlatformSettings) > 0 {
+		opts = append(opts, WithUpdatePlatformSettings(o.PlatformSettings))
+	}
+	if len(o.Workflow) > 0 {
+		opts = append(opts, WithUpdateAgentWorkflow(o.Workflow))
+	}
+	return opts
+}
+
 type updateAgentOption struct {
 	Name                              *string
 	Tags                              []string

@@ -96,7 +96,7 @@ func TestCreateAgentRequestBody(t *testing.T) {
 	WithAgentWorkflow(json.RawMessage(`{"nodes":{}}`))(&opt)
 
 	got, err = json.Marshal(opt.body(ConversationalConfig{
-		TTS: &AgentTTSConfig{VoiceID: "voice-1", ModelID: "eleven_turbo_v2_5"},
+		TTS: &AgentTTSConfig{VoiceID: "voice-1", ModelID: "eleven_turbo_v2"},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -223,6 +223,9 @@ func TestUpdateConversationConfigExtraFields(t *testing.T) {
 
 func TestAgentValidation(t *testing.T) {
 	client := NewClient("test")
+	if _, err := client.CreateOrUpdateAgent(ConversationalConfig{}); err == nil || err.Error() != "agent name is empty" {
+		t.Fatalf("create or update err = %v", err)
+	}
 	if _, err := client.GetAgent(""); err == nil || err.Error() != "agentID is empty" {
 		t.Fatalf("get err = %v", err)
 	}
@@ -298,7 +301,7 @@ func TestCreateAgent(t *testing.T) {
 	got, err := client.CreateAgent(
 		ConversationalConfig{
 			Agent: &AgentConfig{FirstMessage: "Hi", Language: "en", Prompt: &AgentPrompt{Prompt: "Be concise.", LLM: "gemini-2.0-flash"}},
-			TTS:   &AgentTTSConfig{VoiceID: "voice-1", ModelID: "eleven_turbo_v2_5"},
+			TTS:   &AgentTTSConfig{VoiceID: "voice-1", ModelID: "eleven_turbo_v2"},
 		},
 		WithAgentName("Support Concierge"),
 		WithCreateAgentTags("support"),
@@ -308,6 +311,140 @@ func TestCreateAgent(t *testing.T) {
 	}
 	if got.AgentID != "agent_1" {
 		t.Fatalf("result = %+v", got)
+	}
+}
+
+func TestCreateOrUpdateAgentCreates(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requireHeader(t, r, xiAPIKeyHeader, "test-key")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/convai/agents":
+			if r.URL.Query().Get("search") != "Support Concierge" {
+				t.Fatalf("search = %q", r.URL.Query().Get("search"))
+			}
+			if r.URL.Query().Get("page_size") != "100" {
+				t.Fatalf("page_size = %q", r.URL.Query().Get("page_size"))
+			}
+			w.Write([]byte(`{"agents":[{"agent_id":"agent_other","name":"Support Concierge Extra"}],"has_more":false}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/convai/agents/create":
+			var payload createAgentRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload.Name != "Support Concierge" {
+				t.Fatalf("name = %q", payload.Name)
+			}
+			if payload.ConversationConfig.Agent == nil || payload.ConversationConfig.Agent.FirstMessage != "Hi" {
+				t.Fatalf("config = %+v", payload.ConversationConfig)
+			}
+			w.Write([]byte(`{"agent_id":"agent_1"}`))
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	got, err := client.CreateOrUpdateAgent(
+		ConversationalConfig{Agent: &AgentConfig{FirstMessage: "Hi"}},
+		WithAgentName("Support Concierge"),
+		WithCreateAgentTags("support"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AgentID != "agent_1" || !got.Created {
+		t.Fatalf("result = %+v", got)
+	}
+}
+
+func TestCreateOrUpdateAgentUpdates(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requireHeader(t, r, xiAPIKeyHeader, "test-key")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/convai/agents":
+			w.Write([]byte(`{"agents":[{"agent_id":"agent_1","name":"Support Concierge"}],"has_more":false}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/convai/agents/agent_1":
+			var payload updateAgentRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload.ConversationConfig == nil || payload.ConversationConfig.Agent == nil || payload.ConversationConfig.Agent.FirstMessage != "Hello" {
+				t.Fatalf("payload = %+v", payload)
+			}
+			if len(payload.Tags) != 1 || payload.Tags[0] != "support" {
+				t.Fatalf("tags = %v", payload.Tags)
+			}
+			if payload.Name != nil {
+				t.Fatalf("unexpected name = %v", payload.Name)
+			}
+			w.Write([]byte(`{"agent_id":"agent_1","name":"Support Concierge","conversation_config":{"agent":{"first_message":"Hello"}},"metadata":{"created_at_unix_secs":1,"updated_at_unix_secs":2}}`))
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	got, err := client.CreateOrUpdateAgent(
+		ConversationalConfig{Agent: &AgentConfig{FirstMessage: "Hello"}},
+		WithAgentName("Support Concierge"),
+		WithCreateAgentTags("support"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AgentID != "agent_1" || got.Created {
+		t.Fatalf("result = %+v", got)
+	}
+}
+
+func TestCreateOrUpdateAgentPagesThenUpdates(t *testing.T) {
+	page := 0
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/convai/agents":
+			page++
+			if page == 1 {
+				if r.URL.Query().Get("cursor") != "" {
+					t.Fatalf("first page cursor = %q", r.URL.Query().Get("cursor"))
+				}
+				w.Write([]byte(`{"agents":[{"agent_id":"agent_other","name":"Support Concierge Extra"}],"has_more":true,"next_cursor":"cur_2"}`))
+				return
+			}
+			if r.URL.Query().Get("cursor") != "cur_2" {
+				t.Fatalf("second page cursor = %q", r.URL.Query().Get("cursor"))
+			}
+			w.Write([]byte(`{"agents":[{"agent_id":"agent_1","name":"Support Concierge"}],"has_more":false}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/convai/agents/agent_1":
+			w.Write([]byte(`{"agent_id":"agent_1","name":"Support Concierge","conversation_config":{},"metadata":{}}`))
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	got, err := client.CreateOrUpdateAgent(
+		ConversationalConfig{Agent: &AgentConfig{FirstMessage: "Hi"}},
+		WithAgentName("Support Concierge"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AgentID != "agent_1" || got.Created {
+		t.Fatalf("result = %+v", got)
+	}
+	if page != 2 {
+		t.Fatalf("pages = %d", page)
+	}
+}
+
+func TestCreateOrUpdateAgentMultipleMatches(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/convai/agents" {
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.Write([]byte(`{"agents":[{"agent_id":"agent_1","name":"Support"},{"agent_id":"agent_2","name":"Support"}],"has_more":false}`))
+	})
+
+	_, err := client.CreateOrUpdateAgent(ConversationalConfig{}, WithAgentName("Support"))
+	if err == nil || err.Error() != `multiple agents named "Support"` {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -483,7 +620,7 @@ func TestLiveAgents(t *testing.T) {
 			},
 			TTS: &AgentTTSConfig{
 				VoiceID: "CwhRBWXzGAHq8TQ4Fs17",
-				ModelID: "eleven_turbo_v2_5",
+				ModelID: "eleven_turbo_v2",
 			},
 		},
 		WithAgentName("go-eleven-test"),
@@ -551,4 +688,58 @@ func TestLiveAgents(t *testing.T) {
 		t.Fatalf("duplicate = %+v", dup)
 	}
 	extra = append(extra, dup.AgentID)
+}
+
+func TestLiveCreateOrUpdateAgent(t *testing.T) {
+	client := liveClient(t)
+	name := "go-eleven-upsert-test"
+	config := ConversationalConfig{
+		Agent: &AgentConfig{
+			FirstMessage: "Hello from upsert.",
+			Language:     "en",
+			Prompt:       &AgentPrompt{Prompt: "You are a concise test agent for the go-eleven SDK.", LLM: "gemini-2.0-flash"},
+		},
+		TTS: &AgentTTSConfig{
+			VoiceID: "CwhRBWXzGAHq8TQ4Fs17",
+			ModelID: "eleven_turbo_v2",
+		},
+	}
+
+	list, err := client.ListAgents(WithAgentSearch(name), WithAgentPageSize(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for agent := range list.Agents.All() {
+		if agent.Name == name {
+			_ = client.DeleteAgent(agent.AgentID, WithForceDeleteAgent())
+		}
+	}
+
+	created, err := client.CreateOrUpdateAgent(config, WithAgentName(name), WithCreateAgentTags("go-eleven"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.AgentID == "" || !created.Created {
+		t.Fatalf("create = %+v", created)
+	}
+	t.Cleanup(func() {
+		_ = client.DeleteAgent(created.AgentID, WithForceDeleteAgent())
+	})
+
+	config.Agent.FirstMessage = "Hello from upsert update."
+	updated, err := client.CreateOrUpdateAgent(config, WithAgentName(name), WithCreateAgentTags("go-eleven"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.AgentID != created.AgentID || updated.Created {
+		t.Fatalf("update = %+v", updated)
+	}
+
+	got, err := client.GetAgent(created.AgentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ConversationConfig.Agent == nil || got.ConversationConfig.Agent.FirstMessage != "Hello from upsert update." {
+		t.Fatalf("get = %+v", got.ConversationConfig)
+	}
 }
